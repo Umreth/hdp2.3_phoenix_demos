@@ -1,0 +1,42 @@
+#!/bin/sh
+
+# Add this stuff to hbase-site.xml.
+cat <<EOF>/dev/null
+    <property>
+      <name>phoenix.functions.allowUserDefinedFunctions</name>
+      <value>true</value>
+    </property>
+    <property>
+      <name>hbase.dynamic.jars.dir</name>
+      <value>hdfs://hdp1.example.com:8020/apps/hbase/lib</value>
+    </property>
+EOF
+
+# Workaround, to be fixed in GA.
+export HBASE_CONF_PATH=/etc/hbase/conf
+
+# Build the JAR.
+cd sampleudf && mvn package
+
+# Deploy the JAR.
+/bin/cp -f sampleudf/target/sampleudf-1.0-SNAPSHOT.jar /tmp
+runuser hbase -c 'hdfs dfs -rm /apps/hbase/lib/sampleudf-1.0-SNAPSHOT.jar'
+runuser hbase -c 'hdfs dfs -copyFromLocal /tmp/sampleudf-1.0-SNAPSHOT.jar /apps/hbase/lib'
+
+# Run a sample UDF.
+# Paste this in your sqlline session.
+# The duplication is to work around a known bug.
+cat <<EOF>/dev/null
+CREATE TEMPORARY FUNCTION LEVDISTANCE(varchar, varchar)
+RETURNS integer
+AS 'com.zombo.phoenixudf.LevenshteinDistance'
+USING JAR '/apps/hbase/lib/sampleudf-1.0-SNAPSHOT.jar';
+select levdistance('Hello World', 'Hello, Word') from prices limit 1;
+
+CREATE TEMPORARY FUNCTION LEVDISTANCE(varchar, varchar)
+RETURNS integer
+AS 'com.zombo.phoenixudf.LevenshteinDistance'
+USING JAR '/apps/hbase/lib/sampleudf-1.0-SNAPSHOT.jar';
+select levdistance('Hello World', 'Hello, Word') from prices limit 1;
+EOF
+
